@@ -101,6 +101,122 @@ Within a single run the weighting is visible without any extra chrome:
 Note that a matchup favourite can still be a seeding *upset* — those are separate
 things and are labelled separately.
 
+## Steam Pro Tour
+
+The Matchups tab can build a field and a whole matchup chart from **real Steam
+review data** instead of hand-typed numbers.
+
+```bash
+node steam/fetch-steam.js              # the curated default field
+node steam/fetch-steam.js --chart 30   # top 30 most-played instead
+```
+
+That writes `steam/snapshot.json`. In the app: **Matchups → Load Steam field →
+Apply**. The field lands in the roster, the chart fills in, and everything
+downstream — Verify, the bracket, the odds chips — works unchanged.
+
+### The default field
+
+`DEFAULT_TARGETS` in `steam/fetch-steam.js` is the curated field below. Edit that
+array to change it — each entry is a display name plus one or more appids:
+
+| Entrant | Steam entry | reviews | Wilson |
+|---|---|---|---|
+| Subnautica | — | 379,649 | 97.04% |
+| KCD2 | Kingdom Come: Deliverance II | 194,797 | 93.82% |
+| RimWorld: Odyssey | DLC | 3,323 | 88.57% |
+| Onimusha | Onimusha: Way of the Sword | 9,799 | 87.58% |
+| They Are Billions | — | 51,409 | 84.81% |
+| Crimson Desert | Crimson Desert Enhanced | 171,740 | 83.60% |
+| The Blood of Dawnwalker | — | 13,289 | 82.84% |
+| The Sinking City 2 | — | 1,596 | 80.97% |
+| STALKER 2 | Heart of Chornobyl | 139,775 | 79.63% |
+| RimWorld: Anomaly | DLC | 3,047 | 78.66% |
+| Project PITT | Project P.I.T.T. | 926 | 76.54% |
+
+An entry may list **several appids, in which case their review counts are summed**
+and they compete as one entrant. Nothing in the default field does that any more,
+and that is deliberate — a merge produces a weighted average describing neither
+game:
+
+- Subnautica bundled with its Early Access sequel (90.91%) scored 95.52%, a
+  1.5-point drag on the 97.04% it earns alone.
+- RimWorld's two DLCs merged to 84.19%, hiding a **9.91-point** gap between
+  Odyssey (88.57%, 3rd in the field) and Anomaly (78.66%, 10th).
+
+Only merge when the parts genuinely are one competitor.
+
+Names deliberately match `DEFAULT_ROSTER` in `sim.js`, so the derived weights key
+straight onto the built-in roster.
+
+Curated picks skip the `type` and name filters (a deliberate choice is taken at its
+word — that is how RimWorld's DLC entries survive) and default to
+`--min-reviews 0`. Those filters only apply in `--chart` mode.
+
+Sample size matters here: Project PITT loses 2.73 points to the Wilson adjustment
+on 926 reviews and The Sinking City 2 loses 1.93 on 1,596, while Subnautica's
+379,649 barely move it at all.
+
+### Where the data comes from
+
+**Not SteamDB.** It has no public API and its FAQ explicitly prohibits automated
+access ("there's a chance you'll get automatically banned for doing so"), pointing
+people at Valve instead. So this uses Steam's own public endpoints, no API key:
+
+| Endpoint | Used for |
+|---|---|
+| `ISteamChartsService/GetMostPlayedGames` | candidate appids + peak players |
+| `store.steampowered.com/api/appdetails` | name and `type` |
+| `store.steampowered.com/appreviews/<id>` | `total_positive` / `total_reviews` |
+
+`steam/fetch-steam.js` is the **only** thing that ever contacts Steam. The app
+reads the committed snapshot, so it is reproducible, works offline, and hits no
+rate limits. (It also sidesteps the fact that these endpoints send no CORS header,
+so a browser could never call them anyway.)
+
+Filtering drops non-games by `type` (this is what catches FiveM, an `advertising`
+entry), names matching playtest/demo/server/SDK/soundtrack, and anything under the
+review minimum.
+
+### The stat: Wilson lower bound
+
+Raw `positive/total` is a trap — it ranks a game with 9 positive reviews above one
+with 950,000. The score used is the **Wilson 95% lower confidence bound**, which
+asks "what is the lowest true rate consistent with this sample?" Small samples get
+pulled toward 50%, large ones barely move:
+
+| | reviews | raw | Wilson |
+|---|---|---|---|
+| a 9/10 indie | 10 | 90.00% | **59.58%** |
+| FiveM | 352 | 92.05% | **88.74%** |
+| Stardew Valley | 1,037,015 | 98.48% | **98.46%** |
+
+SteamDB itself used this measure for years. Only raw counts are stored in the
+snapshot — every score is derived at load time, so the knobs stay live without
+re-fetching.
+
+### Competitiveness (the knob that matters)
+
+Scores become per-game weights through a Bradley–Terry model on log-odds:
+`P(a beats b) = sigmoid(k · (logit(a) − logit(b)))`.
+
+**`k` is not cosmetic.** At `k = 1` real review spreads are brutal — the widest
+pairing in a live top-16 field comes out at 96% per game, which is **99.6% over a
+Bo3**. The bracket would be decided at seeding. Measured across 2,000 tournaments
+on the real field:
+
+| k | best-reviewed game's title share | verdict |
+|---|---|---|
+| 0.5 | 36.0% | favourite-heavy |
+| **0.3** (default) | **22.9%** | competitive, all 16 games win some |
+| 1.0 | — | effectively deterministic |
+
+**Cap** clamps every pairing away from certainty (default 25%, so nothing is worse
+than 25/75). The preview line warns you when the cap is binding.
+
+Remember a series amplifies any per-game edge, so these weights are deliberately
+compressed relative to intuition.
+
 ### Why there are no draws
 
 A bracket edge advances exactly one competitor, and a drawn match would leave
@@ -116,6 +232,7 @@ for them is a group stage with a points table feeding into the bracket.
 | Control | What it does |
 |---|---|
 | **Bracket / Matchups** | Switch tab (`m`), safe to do mid-run |
+| **Load Steam field** | Build the roster + chart from Steam reviews (Matchups tab) |
 | **− / Fit / +** | Zoom the bracket view |
 | **Play / Pause** | Start or hold the playback (`space`) |
 | **Step ›** | Advance one beat while paused (`→`) |
@@ -148,8 +265,10 @@ resets and a deciding series is played.
 
 | File | Role |
 |---|---|
-| `sim.js` | Simulation engine — seeded RNG, bracket structure, event timeline |
-| `server.js` | Static file server + `/api/simulate` |
+| `steam/fetch-steam.js` | Snapshot fetcher — the only thing that contacts Steam |
+| `steam/snapshot.json` | Committed review data (raw counts only) |
+| `sim.js` | Simulation engine — seeded RNG, bracket, `wilsonLower`, `weightsFromScores` |
+| `server.js` | Static file server + `/api/simulate`, `/api/verify`, `/api/steam` |
 | `public/index.html` | Markup |
 | `public/style.css` | Styles |
 | `public/app.js` | Bracket renderer, matchup editor, playback engine |
@@ -182,6 +301,10 @@ its own if you want to batch-run tournaments:
 ```bash
 node -e "const{simulate}=require('./sim');const w={};for(let i=0;i<2000;i++){const e=simulate({bestOf:3}).events.at(-1);w[e.champion]=(w[e.champion]||0)+1}console.table(w)"
 ```
+
+`GET /api/steam` returns the committed review snapshot (raw counts only; every
+score is derived client-side so the tuning knobs stay live). 404s with a hint if
+`steam/fetch-steam.js` has not been run.
 
 `POST /api/verify` with `{ bestOf, roster, weights, runs }` runs the same
 configuration `runs` times (100–20,000, default 2,000) and returns per-pairing

@@ -28,6 +28,11 @@ const el = {
   matrix: $('#matrix'), mxTable: $('#mxTable'), mxDirty: $('#mxDirty'),
   mxReset: $('#mxReset'), mxExport: $('#mxExport'), mxImport: $('#mxImport'), mxApply: $('#mxApply'),
   mxVerify: $('#mxVerify'), mxProof: $('#mxProof'),
+  steamLoad: $('#steamLoad'), steamMeta: $('#steamMeta'), steamBody: $('#steamBody'),
+  steamSize: $('#steamSize'), steamSizeVal: $('#steamSizeVal'),
+  steamK: $('#steamK'), steamKVal: $('#steamKVal'),
+  steamClamp: $('#steamClamp'), steamClampVal: $('#steamClampVal'),
+  steamApply: $('#steamApply'), steamPreview: $('#steamPreview'),
   ioModal: $('#ioModal'), ioTitle: $('#ioTitle'), ioText: $('#ioText'), ioHint: $('#ioHint'),
   ioCancel: $('#ioCancel'), ioSave: $('#ioSave'),
 };
@@ -309,6 +314,151 @@ function fitZoom() {
   zoom = Math.max(0.3, Math.min(1, avail / w));
   applyZoom();
 }
+
+/* ------------------------------ Steam Pro Tour ------------------------------ */
+
+/**
+ * Build a field and a matchup chart from the committed Steam snapshot.
+ *
+ * Scoring mirrors sim.js exactly (Wilson lower bound -> logit difference), but is
+ * duplicated here rather than imported because the client is plain script tags
+ * with no module loader. The server is the authority; this is for the preview and
+ * for filling the editable matrix.
+ */
+let steamData = null;
+
+const wilsonLower = (pos, total, z) => {
+  const n = Number(total) || 0;
+  if (n <= 0) return 0;
+  const zz = z === undefined ? 1.96 : z;
+  const p = Math.max(0, Math.min(n, Number(pos) || 0)) / n;
+  const z2 = zz * zz;
+  return (p + z2 / (2 * n) - zz * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n)) / (1 + z2 / n);
+};
+const lg = (x) => Math.log(x / (1 - x));
+const sg = (x) => 1 / (1 + Math.exp(-x));
+
+/** Odds that a per-game probability survives a best-of-N series. */
+function seriesOdds(p, bestOf) {
+  const need = Math.ceil(bestOf / 2);
+  const C = (n, r) => { let v = 1; for (let i = 0; i < r; i++) v = (v * (n - i)) / (i + 1); return v; };
+  let s = 0;
+  for (let l = 0; l < need; l++) s += C(need - 1 + l, l) * Math.pow(p, need) * Math.pow(1 - p, l);
+  return s;
+}
+
+const steamK = () => Number(el.steamK.value) / 100;
+const steamClamp = () => Number(el.steamClamp.value) / 100;
+
+/** Top-N snapshot games by Wilson score, with their derived rating. */
+function steamField() {
+  if (!steamData) return [];
+  return steamData.games
+    .map((g) => ({ name: g.name, score: wilsonLower(g.positive, g.total), total: g.total, raw: g.positive / g.total }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, Number(el.steamSize.value));
+}
+
+function steamPairs(field) {
+  const k = steamK();
+  const lo = steamClamp();
+  const hi = 1 - lo;
+  const out = [];
+  for (let i = 0; i < field.length; i++) {
+    for (let j = i + 1; j < field.length; j++) {
+      const p = Math.max(lo, Math.min(hi, sg(k * (lg(field[i].score) - lg(field[j].score)))));
+      out.push([field[i].name, field[j].name, Math.round(p * 100)]);
+    }
+  }
+  return out;
+}
+
+function renderSteamPreview() {
+  el.steamSizeVal.textContent = el.steamSize.value;
+  el.steamKVal.textContent = steamK().toFixed(2);
+  el.steamClampVal.textContent = el.steamClamp.value + '%';
+  if (!steamData) return;
+
+  const field = steamField();
+  el.steamPreview.textContent = '';
+  if (field.length < 4) {
+    el.steamPreview.append(tag('div', 'mx-note', 'Need at least 4 games.'));
+    return;
+  }
+
+  const pairs = steamPairs(field);
+  let widest = pairs[0];
+  for (const p of pairs) if (Math.abs(p[2] - 50) > Math.abs(widest[2] - 50)) widest = p;
+  const bo = Number(el.bestOf.value);
+  const favPct = Math.max(widest[2], 100 - widest[2]) / 100;
+  const fav = widest[2] >= 50 ? widest[0] : widest[1];
+  const dog = widest[2] >= 50 ? widest[1] : widest[0];
+
+  const top = field[0];
+  const bot = field[field.length - 1];
+
+  const line = (label, node) => {
+    const d = tag('div', 'sp-line');
+    d.append(tag('span', 'sp-k', label), node);
+    el.steamPreview.append(d);
+  };
+
+  line('Field', tag('span', null,
+    field.length + ' games · best ' + top.name + ' (' + (top.score * 100).toFixed(1) + '%)'
+    + ' · worst ' + bot.name + ' (' + (bot.score * 100).toFixed(1) + '%)'));
+
+  const w = tag('span', null);
+  w.append(tag('b', 'sp-fav', fav), document.createTextNode(' beats ' + dog + ' '));
+  w.append(tag('b', null, Math.round(favPct * 100) + '%'), document.createTextNode(' per game → '));
+  w.append(tag('b', null, Math.round(seriesOdds(favPct, bo) * 100) + '%'), document.createTextNode(' over a Bo' + bo));
+  line('Widest', w);
+
+  const evens = pairs.filter((p) => p[2] === 50).length;
+  line('Spread', tag('span', 'mx-note',
+    pairs.length + ' pairings · ' + evens + ' dead even · '
+    + (Math.abs(widest[2] - 50) > 24 ? 'capped — lower Competitiveness or raise Cap for closer games'
+      : 'a favourite still loses often enough to be interesting')));
+}
+
+async function loadSteam() {
+  el.steamLoad.disabled = true;
+  el.steamMeta.textContent = 'Loading…';
+  try {
+    const res = await fetch('/api/steam');
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    steamData = json;
+    const when = new Date(json.fetchedAt);
+    el.steamMeta.textContent = json.games.length + ' games · snapshot '
+      + (isNaN(when) ? json.fetchedAt : when.toISOString().slice(0, 10));
+    el.steamSize.max = String(Math.min(24, json.games.length));
+    if (Number(el.steamSize.value) > json.games.length) el.steamSize.value = String(json.games.length);
+    el.steamBody.hidden = false;
+    renderSteamPreview();
+  } catch (err) {
+    el.steamMeta.textContent = err.message;
+  } finally {
+    el.steamLoad.disabled = false;
+  }
+}
+
+el.steamLoad.addEventListener('click', loadSteam);
+for (const c of [el.steamSize, el.steamK, el.steamClamp]) c.addEventListener('input', renderSteamPreview);
+
+el.steamApply.addEventListener('click', () => {
+  const field = steamField();
+  if (field.length < 4) return;
+
+  roster = field.map((f) => f.name);
+  weights = Object.create(null);
+  for (const [a, b, pct] of steamPairs(field)) setWeight(a, b, pct);
+
+  saveWeights();
+  renderMatrix();
+  markDirty(true);
+  el.mxProof.hidden = true;
+  say('Steam field loaded: ' + field.length + ' games, weights from Wilson-adjusted review scores.', 'big');
+});
 
 /* ------------------------------ matchup weights ------------------------------ */
 

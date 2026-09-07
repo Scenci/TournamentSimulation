@@ -1,0 +1,131 @@
+{
+  "fetchedAt": "2026-09-07T18:51:50.006Z",
+  "source": "steam-web-api",
+  "field": "curated",
+  "params": {
+    "minReviews": 0
+  },
+  "games": [
+    {
+      "name": "Onimusha",
+      "appids": [
+        2638890
+      ],
+      "positive": 8646,
+      "negative": 1153,
+      "total": 9799,
+      "scoreDesc": "Very Positive",
+      "peakPlayers": null
+    },
+    {
+      "name": "Crimson Desert",
+      "appids": [
+        3321460
+      ],
+      "positive": 143869,
+      "negative": 27871,
+      "total": 171740,
+      "scoreDesc": "Very Positive",
+      "peakPlayers": null
+    },
+    {
+      "name": "They Are Billions",
+      "appids": [
+        644930
+      ],
+      "positive": 43759,
+      "negative": 7650,
+      "total": 51409,
+      "scoreDesc": "Very Positive",
+      "peakPlayers": null
+    },
+    {
+      "name": "RimWorld: Odyssey",
+      "appids": [
+        3022790
+      ],
+      "positive": 2979,
+      "negative": 344,
+      "total": 3323,
+      "scoreDesc": "Very Positive",
+      "peakPlayers": null
+    },
+    {
+      "name": "RimWorld: Anomaly",
+      "appids": [
+        2380740
+      ],
+      "positive": 2441,
+      "negative": 606,
+      "total": 3047,
+      "scoreDesc": "Very Positive",
+      "peakPlayers": null
+    },
+    {
+      "name": "The Blood of Dawnwalker",
+      "appids": [
+        3751260
+      ],
+      "positive": 11094,
+      "negative": 2195,
+      "total": 13289,
+      "scoreDesc": "Very Positive",
+      "peakPlayers": null
+    },
+    {
+      "name": "KCD2",
+      "appids": [
+        1771300
+      ],
+      "positive": 182958,
+      "negative": 11839,
+      "total": 194797,
+      "scoreDesc": "Very Positive",
+      "peakPlayers": null
+    },
+    {
+      "name": "STALKER 2",
+      "appids": [
+        1643320
+      ],
+      "positive": 111599,
+      "negative": 28176,
+      "total": 139775,
+      "scoreDesc": "Mostly Positive",
+      "peakPlayers": null
+    },
+    {
+      "name": "The Sinking City 2",
+      "appids": [
+        2825860
+      ],
+      "positive": 1323,
+      "negative": 273,
+      "total": 1596,
+      "scoreDesc": "Very Positive",
+      "peakPlayers": null
+    },
+    {
+      "name": "Project PITT",
+      "appids": [
+        4026250
+      ],
+      "positive": 734,
+      "negative": 192,
+      "total": 926,
+      "scoreDesc": "Mostly Positive",
+      "peakPlayers": null
+    },
+    {
+      "name": "Subnautica",
+      "appids": [
+        264710
+      ],
+      "positive": 368601,
+      "negative": 11048,
+      "total": 379649,
+      "scoreDesc": "Overwhelmingly Positive",
+      "peakPlayers": null
+    }
+  ]
+}

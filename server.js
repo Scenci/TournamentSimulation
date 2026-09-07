@@ -179,6 +179,23 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // The committed Steam snapshot. Nothing here talks to Steam at request time -
+  // steam/fetch-steam.js is the only thing that does, so the app works offline.
+  if (url.pathname === '/api/steam') {
+    fs.readFile(path.join(__dirname, 'steam', 'snapshot.json'), 'utf8', (err, txt) => {
+      if (err) {
+        sendJson(res, 404, { error: 'No Steam snapshot yet. Run:  node steam/fetch-steam.js' });
+        return;
+      }
+      try {
+        sendJson(res, 200, JSON.parse(txt));
+      } catch (e) {
+        sendJson(res, 500, { error: 'snapshot.json is not valid JSON: ' + e.message });
+      }
+    });
+    return;
+  }
+
   // ---- static files, confined to public/ ----
   const rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, '');
   const file = path.resolve(PUBLIC, rel);

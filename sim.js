@@ -18,13 +18,14 @@ const DEFAULT_ROSTER = [
   'Onimusha',
   'Crimson Desert',
   'They Are Billions',
-  'RimWorld: Odyssey/Anomaly',
+  'RimWorld: Odyssey',
+  'RimWorld: Anomaly',
   'The Blood of Dawnwalker',
   'KCD2',
   'STALKER 2',
   'The Sinking City 2',
   'Project PITT',
-  'Subnautica 1 & 2',
+  'Subnautica',
   'Expedition 33',
   'Dungeon Settlers',
 ];
@@ -89,6 +90,66 @@ function probOf(W, a, b) {
   const row = W[a];
   const v = row && row[b];
   return v === undefined ? 0.5 : v / 100;
+}
+
+/**
+ * Wilson score lower bound - the conservative estimate of a true positive rate
+ * given `pos` successes out of `total`, at ~95% confidence by default.
+ *
+ * Raw pos/total is a trap for ranking: 9 positive out of 10 scores 90% and would
+ * outrank a game with 950,000 out of a million. The Wilson bound asks instead
+ * "what is the lowest rate consistent with this sample?", so a tiny sample is
+ * pulled hard toward 50% while a huge one barely moves. 9/10 -> 59.6%,
+ * 9500/10000 -> 94.6%.
+ */
+function wilsonLower(pos, total, z) {
+  const n = Number(total) || 0;
+  if (n <= 0) return 0;
+  const zz = z === undefined ? 1.96 : z;
+  const p = Math.max(0, Math.min(n, Number(pos) || 0)) / n;
+  const z2 = zz * zz;
+  return (p + z2 / (2 * n) - zz * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n)) / (1 + z2 / n);
+}
+
+const logit = (x) => Math.log(x / (1 - x));
+const sigmoid = (x) => 1 / (1 + Math.exp(-x));
+
+/**
+ * Turn per-entrant quality scores into pairwise per-game matchup weights.
+ *
+ * P(a beats b) = sigmoid(k * (logit(score_a) - logit(score_b))), i.e. a
+ * Bradley-Terry model on log-odds, with two knobs that matter a great deal:
+ *
+ *   k     "competitiveness". At k=1 real review spreads are brutal - the widest
+ *         pairing in a live top-16 field comes out at 96% per game, which is
+ *         99.6% over a Bo3, so the bracket is decided at seeding. Around 0.3
+ *         keeps favourites favoured while leaving genuine upset room. Remember a
+ *         series already amplifies any per-game edge.
+ *   clamp floor/ceiling so no matchup is ever a foregone conclusion.
+ *
+ * Returns the same [a, b, pct] triples `buildWeights` consumes, one per pairing,
+ * so this drops straight into simulate({ weights }).
+ */
+function weightsFromScores(scores, opts) {
+  opts = opts || {};
+  const k = Number.isFinite(Number(opts.k)) ? Number(opts.k) : 0.3;
+  const clamp = Math.max(0, Math.min(0.5, Number.isFinite(Number(opts.clamp)) ? Number(opts.clamp) : 0.25));
+  const lo = clamp;
+  const hi = 1 - clamp;
+
+  // guard the logit against 0/1, which would blow up to +/-Infinity
+  const list = (scores || [])
+    .filter((s) => s && typeof s.name === 'string' && Number.isFinite(Number(s.score)))
+    .map((s) => ({ name: s.name, l: logit(Math.max(0.001, Math.min(0.999, Number(s.score)))) }));
+
+  const out = [];
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const p = Math.max(lo, Math.min(hi, sigmoid(k * (list[i].l - list[j].l))));
+      out.push([list[i].name, list[j].name, Math.round(p * 100)]);
+    }
+  }
+  return out;
 }
 
 /**
@@ -426,4 +487,4 @@ function simulate(opts) {
   return { seed, bestOf, bracketSize, byeCount, wbRoundCount, lbRoundCount, roster, rounds, nodes, events };
 }
 
-module.exports = { simulate, DEFAULT_ROSTER, buildWeights, probOf };
+module.exports = { simulate, DEFAULT_ROSTER, buildWeights, probOf, wilsonLower, weightsFromScores };

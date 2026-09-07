@@ -66,6 +66,35 @@
     <div id="board" class="board"></div>
 
     <div id="matrix" class="matrix" hidden>
+      <div class="steam">
+        <div class="steam-top">
+          <div class="steam-title">
+            <b>Steam Pro Tour</b>
+            <span id="steamMeta" class="mx-note">Build a field from real Steam review data.</span>
+          </div>
+          <button id="steamLoad" class="btn">Load Steam field</button>
+        </div>
+
+        <div id="steamBody" hidden>
+          <div class="steam-knobs">
+            <label class="knob">
+              <span>Field size <b id="steamSizeVal">16</b></span>
+              <input id="steamSize" type="range" min="4" max="24" step="1" value="16">
+            </label>
+            <label class="knob">
+              <span>Competitiveness <b id="steamKVal">0.30</b></span>
+              <input id="steamK" type="range" min="5" max="100" step="1" value="30">
+            </label>
+            <label class="knob">
+              <span>Cap <b id="steamClampVal">25%</b></span>
+              <input id="steamClamp" type="range" min="0" max="45" step="1" value="25">
+            </label>
+            <button id="steamApply" class="btn primary">Apply field &amp; weights</button>
+          </div>
+          <div id="steamPreview" class="steam-preview"></div>
+        </div>
+      </div>
+
       <div class="mx-bar">
         <div class="mx-intro">
           <b>Per&#8209;game win rate.</b> A cell is the chance the <em>row</em> beats the

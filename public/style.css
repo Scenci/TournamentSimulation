@@ -125,6 +125,50 @@ body {
   background: var(--live);
 }
 
+/* ---------- Steam Pro Tour panel ---------- */
+.steam {
+  border: 1px solid #1b6ca8aa;
+  background: linear-gradient(180deg, #1b6ca81a, transparent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  max-width: 900px;
+}
+
+.steam-top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.steam-title { display: flex; flex-direction: column; gap: 2px; }
+.steam-title b { color: #7fc4ff; font-size: 13px; letter-spacing: .3px; }
+.steam-top .btn { margin-left: auto; }
+
+.steam-knobs {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.knob { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--dim); }
+.knob span { white-space: nowrap; }
+.knob b { color: var(--gold); font-variant-numeric: tabular-nums; }
+.knob input { width: 150px; accent-color: #7fc4ff; cursor: pointer; }
+.steam-knobs .btn { margin-left: auto; }
+
+.steam-preview { margin-top: 12px; display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+.sp-line { display: flex; gap: 10px; align-items: baseline; }
+.sp-k {
+  color: var(--faint);
+  font-size: 10px;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  width: 54px;
+  flex: none;
+}
+.sp-line b { color: var(--ink); }
+.sp-line b.sp-fav { color: var(--win); }
+
 /* ---------- matchup matrix ---------- */
 
 .matrix { max-width: 100%; }
