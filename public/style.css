@@ -125,6 +125,58 @@ body {
   background: var(--live);
 }
 
+/* ---------- batch simulation ---------- */
+#simTimes { width: 62px; font-variant-numeric: tabular-nums; text-align: right; }
+.sel .times { color: var(--faint); font-size: 11px; }
+
+.modal-card.wide { width: min(860px, 100%); }
+
+#batchTitle { margin-bottom: 4px; }
+#batchMeta { display: block; margin-bottom: 14px; line-height: 1.5; }
+
+table.batch {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12.5px;
+}
+
+table.batch th {
+  text-align: right;
+  font-size: 10px;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+  color: var(--faint);
+  font-weight: 600;
+  padding: 0 8px 6px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+table.batch th:nth-child(2) { text-align: left; }
+table.batch td { padding: 6px 8px; border-bottom: 1px solid #ffffff08; }
+table.batch td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.batch td.dim { color: var(--faint); }
+table.batch td.rank { color: var(--faint); font-size: 10px; width: 22px; text-align: right; }
+table.batch td.nm { color: var(--ink); }
+table.batch tr:nth-child(2) td.nm { color: var(--gold); font-weight: 700; }
+table.batch tr:last-child td { border-bottom: 0; }
+
+/* title share doubles as a bar so the distribution is readable at a glance */
+table.batch td.share { position: relative; min-width: 110px; }
+table.batch td.share .bar {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 16px;
+  background: linear-gradient(90deg, #2b6fff55, #2b6fff22);
+  border-radius: 3px;
+  pointer-events: none;
+}
+table.batch td.share .pct { position: relative; }
+
+.batch-foot { display: block; margin-top: 14px; line-height: 1.5; }
+
 /* ---------- Steam Pro Tour panel ---------- */
 .steam {
   border: 1px solid #1b6ca8aa;

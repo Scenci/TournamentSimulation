@@ -83,6 +83,21 @@ So a number you tune under Bo3 will mean something different if you switch to
 Bo5. That is the intended behaviour — it is how real series work — but it is
 worth knowing before you wonder why a 54% matchup looks stronger than 54%.
 
+### Sim N times
+
+One bracket is a single sample of a very noisy process — a 97%-rated game can and
+does go out in the first round. **Sim** runs the current configuration (roster,
+weights, best-of) N times server-side and reports the distribution: titles, title
+share, how often each entrant reached the grand final, average finishing place,
+best-ever finish, and overall series win rate.
+
+Defaults to 100. Accepts 2–50,000; anything outside that is clamped and the box is
+corrected to show what actually ran. 50,000 tournaments take about 700ms.
+
+The header line also gives the shape of the format itself — average series and
+games per run, and how often the grand final went to a bracket reset (~48%, which
+is about right when the two finalists are closely matched).
+
 ### Proving the weights are live
 
 **Verify** re-runs the current configuration 2,000 times headlessly and reports,
@@ -238,6 +253,7 @@ for them is a group stage with a points table feeding into the bracket.
 | **Step ›** | Advance one beat while paused (`→`) |
 | **Skip to end »** | Jump straight to the result |
 | **New draw** | Fresh random seeding and a brand-new tournament |
+| **Sim N ×** | Run the current setup N times and show the distribution (default 100) |
 | **Speed** | 0.1× to 25×, applies instantly mid-run |
 | **Best of** | 1, 3, 5, or 7 games per match |
 | **Seed** | Type a seed and press Enter to replay that tournament |
@@ -305,6 +321,11 @@ node -e "const{simulate}=require('./sim');const w={};for(let i=0;i<2000;i++){con
 `GET /api/steam` returns the committed review snapshot (raw counts only; every
 score is derived client-side so the tuning knobs stay live). 404s with a hint if
 `steam/fetch-steam.js` has not been run.
+
+`POST /api/batch` with `{ runs, bestOf, roster, weights }` runs the configuration
+`runs` times (2–50,000, default 100) and returns per-entrant `titles`, `titlePct`,
+`finalPct`, `avgPlace`, `best` and `winRate`, plus `resets`, `avgSeries` and
+`avgGames`. This is what the Sim button calls.
 
 `POST /api/verify` with `{ bestOf, roster, weights, runs }` runs the same
 configuration `runs` times (100–20,000, default 2,000) and returns per-pairing

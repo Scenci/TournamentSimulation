@@ -24,6 +24,14 @@
     <button id="again" class="btn">&#8635; New draw</button>
   </div>
 
+  <div class="ctl">
+    <label class="sel">Sim
+      <input id="simTimes" type="number" min="2" max="50000" step="1" value="100">
+      <span class="times">&times;</span>
+    </label>
+    <button id="simRun" class="btn">Run</button>
+  </div>
+
   <label class="speed">
     <span class="speed-lbl">Speed <b id="speedVal">1.0&times;</b></span>
     <input id="speed" type="range" min="0" max="100" value="42">
@@ -144,6 +152,15 @@
       <button id="rosterCancel" class="btn">Cancel</button>
       <button id="rosterSave" class="btn primary">Save &amp; redraw</button>
     </div>
+  </div>
+</div>
+
+<div id="batchModal" class="modal hidden">
+  <div class="modal-card wide">
+    <button class="close" id="batchClose">&times;</button>
+    <h3 id="batchTitle">Batch simulation</h3>
+    <div id="batchMeta" class="mx-note"></div>
+    <div id="batchBody"></div>
   </div>
 </div>
 

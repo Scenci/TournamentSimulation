@@ -35,6 +35,9 @@ const el = {
   steamApply: $('#steamApply'), steamPreview: $('#steamPreview'),
   ioModal: $('#ioModal'), ioTitle: $('#ioTitle'), ioText: $('#ioText'), ioHint: $('#ioHint'),
   ioCancel: $('#ioCancel'), ioSave: $('#ioSave'),
+  simTimes: $('#simTimes'), simRun: $('#simRun'),
+  batchModal: $('#batchModal'), batchTitle: $('#batchTitle'), batchMeta: $('#batchMeta'),
+  batchBody: $('#batchBody'), batchClose: $('#batchClose'),
 };
 
 // timings in ms at 1x
@@ -1036,6 +1039,99 @@ function finish(ev, instant) {
   if (!instant) el.podium.classList.remove('hidden');
 }
 
+/* ------------------------------ batch simulation ------------------------------ */
+
+/**
+ * Run the current configuration N times server-side and show the distribution.
+ *
+ * One bracket is a single sample of a very noisy process — a 97%-rated game can
+ * and does go out in the first round. This is what separates "who won that one"
+ * from "who wins".
+ */
+async function runBatch() {
+  const runs = Math.max(2, Math.min(50000, Math.round(Number(el.simTimes.value) || 100)));
+  el.simTimes.value = String(runs);
+
+  el.batchModal.classList.remove('hidden');
+  el.batchTitle.textContent = 'Simulating ' + runs.toLocaleString() + ' tournaments…';
+  el.batchMeta.textContent = '';
+  el.batchBody.textContent = '';
+  el.simRun.disabled = true;
+
+  try {
+    const res = await fetch('/api/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        runs,
+        bestOf: Number(el.bestOf.value),
+        roster: roster || undefined,
+        weights: weightTriples(),
+      }),
+    });
+    const out = await res.json();
+    if (out.error) throw new Error(out.error);
+    renderBatch(out);
+  } catch (err) {
+    el.batchTitle.textContent = 'Batch failed';
+    el.batchBody.textContent = '';
+    el.batchBody.append(tag('div', 'mx-note', err.message));
+  } finally {
+    el.simRun.disabled = false;
+  }
+}
+
+function renderBatch(out) {
+  const nw = weightTriples().length;
+  el.batchTitle.textContent = out.runs.toLocaleString() + ' tournaments · ' + out.entrants + ' entrants';
+  el.batchMeta.textContent =
+    'Best of ' + el.bestOf.value + ' · '
+    + (nw ? nw + ' weighted pairing' + (nw > 1 ? 's' : '') : 'no weights — even coin flips') + ' · '
+    + out.avgSeries.toFixed(1) + ' series and ' + out.avgGames.toFixed(1) + ' games per run · '
+    + ((out.resets / out.runs) * 100).toFixed(1) + '% ended in a bracket reset · '
+    + out.ms + 'ms';
+
+  el.batchBody.textContent = '';
+  const t = tag('table', 'batch');
+  const hr = tag('tr');
+  for (const h of ['', 'Entrant', 'Titles', 'Title %', 'Finals %', 'Avg place', 'Best', 'Series W%']) {
+    hr.append(tag('th', null, h));
+  }
+  t.append(hr);
+
+  const most = out.rows.length ? out.rows[0].titlePct : 0;
+  out.rows.forEach((r, i) => {
+    const tr = tag('tr');
+    tr.append(tag('td', 'rank', String(i + 1)));
+    tr.append(tag('td', 'nm', r.name));
+    tr.append(tag('td', 'num', r.titles.toLocaleString()));
+
+    // a bar makes the shape of the distribution readable at a glance
+    const share = tag('td', 'num share');
+    const bar = tag('span', 'bar');
+    bar.style.width = (most ? (r.titlePct / most) * 100 : 0).toFixed(1) + '%';
+    share.append(bar, tag('span', 'pct', r.titlePct.toFixed(1) + '%'));
+    tr.append(share);
+
+    tr.append(tag('td', 'num', r.finalPct.toFixed(1) + '%'));
+    tr.append(tag('td', 'num', r.avgPlace.toFixed(2)));
+    tr.append(tag('td', 'num dim', r.best === null ? '—' : String(r.best)));
+    tr.append(tag('td', 'num dim', r.winRate.toFixed(1) + '%'));
+    t.append(tr);
+  });
+  el.batchBody.append(t);
+
+  const never = out.rows.filter((r) => r.titles === 0);
+  el.batchBody.append(tag('div', 'mx-note batch-foot',
+    never.length
+      ? never.length + ' entrant' + (never.length > 1 ? 's' : '') + ' never won: ' + never.map((r) => r.name).join(', ')
+      : 'Every entrant won at least once — nothing here is a foregone conclusion.'));
+}
+
+el.simRun.addEventListener('click', runBatch);
+el.batchClose.addEventListener('click', () => el.batchModal.classList.add('hidden'));
+el.simTimes.addEventListener('keydown', (e) => { if (e.key === 'Enter') runBatch(); });
+
 /* ------------------------------ control ------------------------------ */
 
 async function load(opts) {
@@ -1161,6 +1257,7 @@ document.addEventListener('keydown', (e) => {
     el.podium.classList.add('hidden');
     el.rosterModal.classList.add('hidden');
     el.ioModal.classList.add('hidden');
+    el.batchModal.classList.add('hidden');
   }
   if (e.key === 'ArrowRight' && !el.step.disabled) { setPlaying(false); stepOnce = true; }
   if (e.key === 'm' || e.key === 'M') setView(view === 'matchups' ? 'bracket' : 'matchups');

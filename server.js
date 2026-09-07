@@ -174,6 +174,95 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  /**
+   * Run the same configuration many times and aggregate who actually wins.
+   * A single bracket is one sample of a very noisy process; this is what turns
+   * it into a distribution.
+   */
+  if (url.pathname === '/api/batch' && req.method === 'POST') {
+    let body = '';
+    let tooBig = false;
+    req.on('data', (c) => {
+      body += c;
+      if (body.length > 4e6) { tooBig = true; req.destroy(); }
+    });
+    req.on('end', () => {
+      if (tooBig) { sendJson(res, 413, { error: 'Payload too large.' }); return; }
+      let o;
+      try {
+        o = JSON.parse(body || '{}');
+      } catch (err) {
+        sendJson(res, 400, { error: 'Malformed JSON body.' });
+        return;
+      }
+
+      const roster = Array.isArray(o.roster) && o.roster.length >= 4
+        ? o.roster.map((s) => String(s).trim()).filter(Boolean).slice(0, 32)
+        : null;
+      const runs = Math.max(2, Math.min(50000, Math.round(Number(o.runs) || 100)));
+
+      const agg = new Map();
+      const started = Date.now();
+      let resets = 0;
+      let totalSeries = 0;
+      let totalGames = 0;
+
+      try {
+        for (let i = 0; i < runs; i++) {
+          const sim = simulate({ bestOf: o.bestOf, roster, weights: o.weights });
+          const last = sim.events[sim.events.length - 1];
+          if (sim.events.some((e) => e.type === 'reset')) resets++;
+          totalSeries += last.totals.series;
+          totalGames += last.totals.games;
+
+          for (const p of last.placements) {
+            let r = agg.get(p.name);
+            if (!r) {
+              r = { name: p.name, titles: 0, finals: 0, placeSum: 0, n: 0, best: Infinity, worst: 0, sw: 0, sl: 0 };
+              agg.set(p.name, r);
+            }
+            r.n++;
+            r.placeSum += p.place;
+            if (p.place === 1) r.titles++;
+            if (p.place <= 2) r.finals++;
+            if (p.place < r.best) r.best = p.place;
+            if (p.place > r.worst) r.worst = p.place;
+            r.sw += p.sw;
+            r.sl += p.sl;
+          }
+        }
+      } catch (err) {
+        sendJson(res, 500, { error: String((err && err.message) || err) });
+        return;
+      }
+
+      const rows = [...agg.values()]
+        .map((r) => ({
+          name: r.name,
+          titles: r.titles,
+          titlePct: (r.titles / runs) * 100,
+          finals: r.finals,
+          finalPct: (r.finals / runs) * 100,
+          avgPlace: r.placeSum / r.n,
+          best: r.best === Infinity ? null : r.best,
+          worst: r.worst || null,
+          winRate: r.sw + r.sl ? (r.sw / (r.sw + r.sl)) * 100 : 0,
+        }))
+        .sort((a, b) => b.titles - a.titles || a.avgPlace - b.avgPlace);
+
+      sendJson(res, 200, {
+        runs,
+        ms: Date.now() - started,
+        entrants: rows.length,
+        resets,
+        avgSeries: totalSeries / runs,
+        avgGames: totalGames / runs,
+        rows,
+      });
+    });
+    return;
+  }
+
   if (url.pathname === '/api/roster') {
     sendJson(res, 200, { roster: DEFAULT_ROSTER });
     return;
