@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tournament Sim</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>&#127942;</text></svg>">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand"><span class="cup">&#127942;</span> Tournament Sim</div>
+
+  <div class="seg" role="tablist">
+    <button id="viewCards" class="seg-btn on">Cards</button>
+    <button id="viewGraph" class="seg-btn">Bracket</button>
+  </div>
+
+  <div class="ctl">
+    <button id="play" class="btn primary">&#9654; Play</button>
+    <button id="step" class="btn">Step &#8250;</button>
+    <button id="skip" class="btn">Skip to end &#187;</button>
+    <button id="again" class="btn">&#8635; New draw</button>
+  </div>
+
+  <label class="speed">
+    <span class="speed-lbl">Speed <b id="speedVal">1.0&times;</b></span>
+    <input id="speed" type="range" min="0" max="100" value="42">
+  </label>
+
+  <div class="ctl">
+    <label class="sel">Best of
+      <select id="bestOf">
+        <option value="1">1</option>
+        <option value="3" selected>3</option>
+        <option value="5">5</option>
+        <option value="7">7</option>
+      </select>
+    </label>
+    <label class="sel seed-wrap">Seed
+      <input id="seed" type="text" inputmode="numeric" placeholder="random" spellcheck="false">
+    </label>
+    <button id="roster" class="btn ghost">Roster</button>
+  </div>
+
+  <div class="ctl zoomctl" id="zoomCtl" hidden>
+    <button id="zoomOut" class="btn zbtn" title="Zoom out">&minus;</button>
+    <button id="zoomFit" class="btn" title="Fit to window">Fit</button>
+    <button id="zoomIn" class="btn zbtn" title="Zoom in">+</button>
+  </div>
+</header>
+
+<div id="progress"><i></i></div>
+
+<main>
+  <aside class="side">
+    <h2>Entrants <span id="aliveCount" class="tag"></span></h2>
+    <ol id="standings" class="standings"></ol>
+    <h2 class="mt">Play&#8209;by&#8209;play</h2>
+    <div id="log" class="log"></div>
+  </aside>
+
+  <section class="stage">
+    <div id="phase" class="phase">Press Play to run the tournament</div>
+    <div id="board" class="board"></div>
+  </section>
+</main>
+
+<div id="podium" class="podium hidden">
+  <div class="podium-card">
+    <button class="close" id="closePodium">&times;</button>
+    <div class="crown">&#127942;</div>
+    <div class="champ-label">Champion</div>
+    <div id="champName" class="champ-name"></div>
+    <div id="champRec" class="champ-rec"></div>
+    <ol id="finalTable" class="final-table"></ol>
+    <div id="totals" class="totals"></div>
+  </div>
+</div>
+
+<div id="rosterModal" class="modal hidden">
+  <div class="modal-card">
+    <h3>Roster <small>one entrant per line &middot; 4&ndash;32</small></h3>
+    <textarea id="rosterText" spellcheck="false" rows="14"></textarea>
+    <div class="modal-actions">
+      <button id="rosterReset" class="btn ghost">Reset to default</button>
+      <span class="spacer"></span>
+      <button id="rosterCancel" class="btn">Cancel</button>
+      <button id="rosterSave" class="btn primary">Save &amp; redraw</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

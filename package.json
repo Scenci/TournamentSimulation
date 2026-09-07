@@ -1,0 +1,13 @@
+{
+  "name": "tournament-sim",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Zero-dependency Node app that visually simulates a double-elimination tournament at adjustable speed.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

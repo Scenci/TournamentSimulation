@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tournament-sim",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.js"],
+      "port": 5173
+    }
+  ]
+}
