@@ -26,8 +26,12 @@ const el = {
   finalTable: $('#finalTable'), totals: $('#totals'), closePodium: $('#closePodium'),
   rosterBtn: $('#roster'), rosterModal: $('#rosterModal'), rosterText: $('#rosterText'),
   rosterSave: $('#rosterSave'), rosterCancel: $('#rosterCancel'), rosterReset: $('#rosterReset'),
-  viewCards: $('#viewCards'), viewGraph: $('#viewGraph'),
+  viewCards: $('#viewCards'), viewGraph: $('#viewGraph'), viewMatch: $('#viewMatch'),
   zoomCtl: $('#zoomCtl'), zoomIn: $('#zoomIn'), zoomOut: $('#zoomOut'), zoomFit: $('#zoomFit'),
+  matrix: $('#matrix'), mxTable: $('#mxTable'), mxDirty: $('#mxDirty'),
+  mxReset: $('#mxReset'), mxExport: $('#mxExport'), mxImport: $('#mxImport'), mxApply: $('#mxApply'),
+  ioModal: $('#ioModal'), ioTitle: $('#ioTitle'), ioText: $('#ioText'), ioHint: $('#ioHint'),
+  ioCancel: $('#ioCancel'), ioSave: $('#ioSave'),
 };
 
 // timings in ms at 1x
@@ -44,6 +48,9 @@ G.COL_W = G.BOX_W + G.GAP_X;
 let data = null;        // current simulation
 let roster = null;      // null = server default
 let view = 'cards';
+let boardView = 'cards'; // last board view, restored when leaving Matchups
+let weights = Object.create(null); // W[a][b] = % chance a takes a game off b
+let weightsDirty = false;
 let zoom = 1;
 let playing = false;
 let fast = false;       // "skip to end"
@@ -341,6 +348,210 @@ function fitZoom() {
   applyZoom();
 }
 
+/* ------------------------------ matchup weights ------------------------------ */
+
+const WKEY = 'tsim.weights.v1';
+
+/** Set one pairing and its mirror together, so the two can never disagree. */
+function setWeight(a, b, pct) {
+  const v = Math.max(0, Math.min(100, Math.round(Number(pct))));
+  if (!Number.isFinite(v) || a === b) return 50;
+  (weights[a] || (weights[a] = Object.create(null)))[b] = v;
+  (weights[b] || (weights[b] = Object.create(null)))[a] = 100 - v;
+  return v;
+}
+
+function getWeight(a, b) {
+  const row = weights[a];
+  const v = row && row[b];
+  return v === undefined ? 50 : v;
+}
+
+/** Serialize as canonical [a, b, pct] triples, one per pairing, a < b. */
+function weightTriples() {
+  const out = [];
+  for (const a of Object.keys(weights)) {
+    for (const b of Object.keys(weights[a])) {
+      if (a < b && weights[a][b] !== 50) out.push([a, b, weights[a][b]]);
+    }
+  }
+  return out;
+}
+
+function loadWeights() {
+  try {
+    const raw = localStorage.getItem(WKEY);
+    if (!raw) return;
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) return;
+    for (const row of list) if (Array.isArray(row) && row.length >= 3) setWeight(row[0], row[1], row[2]);
+  } catch (err) {
+    /* private window, cleared storage, blocked site data - just start even */
+  }
+}
+
+function saveWeights() {
+  try {
+    localStorage.setItem(WKEY, JSON.stringify(weightTriples()));
+  } catch (err) { /* non-fatal: weights still apply for this session */ }
+}
+
+function entrantList() {
+  return roster || (data && data.roster) || [];
+}
+
+function oddsColor(pct) {
+  if (pct === 50) return '';
+  const t = Math.min(1, Math.abs(pct - 50) / 50);
+  const hue = pct > 50 ? 145 : 353;
+  return 'background:hsla(' + hue + ',70%,45%,' + (0.10 + t * 0.42).toFixed(3) + ')';
+}
+
+function markDirty(on) {
+  weightsDirty = on;
+  el.mxDirty.hidden = !on;
+  el.viewMatch.classList.toggle('dot', on);
+}
+
+function renderMatrix() {
+  const names = entrantList();
+  el.mxTable.textContent = '';
+
+  const thead = tag('thead');
+  const hr = tag('tr');
+  hr.append(tag('th', 'corner', 'row beats column →'));
+  names.forEach((n, i) => {
+    const th = tag('th', 'colh', String(i + 1));
+    th.title = n;
+    hr.append(th);
+  });
+  hr.append(tag('th', 'colh avg', 'avg'));
+  thead.append(hr);
+  el.mxTable.append(thead);
+
+  const tb = tag('tbody');
+  names.forEach((a, i) => {
+    const tr = tag('tr');
+    const rh = tag('th', 'rowh');
+    rh.append(tag('span', 'ix', String(i + 1)), tag('span', 'nm', a));
+    rh.title = a;
+    tr.append(rh);
+
+    names.forEach((b, j) => {
+      if (i === j) { tr.append(tag('td', 'diag', '—')); return; }
+      const td = tag('td');
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.min = '0';
+      inp.max = '100';
+      inp.step = '1';
+      inp.value = String(getWeight(a, b));
+      inp.dataset.a = a;
+      inp.dataset.b = b;
+      inp.setAttribute('aria-label', a + ' beats ' + b);
+      inp.title = a + ' beats ' + b;
+      td.append(inp);
+      tr.append(td);
+    });
+
+    tr.append(tag('td', 'avg', avgFor(a, names)));
+    tb.append(tr);
+  });
+  el.mxTable.append(tb);
+  paintMatrix();
+}
+
+function avgFor(a, names) {
+  const others = names.filter((n) => n !== a);
+  if (!others.length) return '—';
+  let sum = 0;
+  for (const b of others) sum += getWeight(a, b);
+  return (sum / others.length).toFixed(1) + '%';
+}
+
+/** Repaint every cell from the model - cheap enough at these sizes. */
+function paintMatrix() {
+  const names = entrantList();
+  for (const inp of el.mxTable.querySelectorAll('input')) {
+    const v = getWeight(inp.dataset.a, inp.dataset.b);
+    if (document.activeElement !== inp) inp.value = String(v);
+    inp.parentElement.style.cssText = oddsColor(v);
+    inp.classList.toggle('even', v === 50);
+  }
+  const rows = el.mxTable.querySelectorAll('tbody tr');
+  names.forEach((a, i) => {
+    const cell = rows[i] && rows[i].querySelector('td.avg');
+    if (cell) cell.textContent = avgFor(a, names);
+  });
+}
+
+el.mxTable.addEventListener('input', (e) => {
+  const inp = e.target;
+  if (!inp.matches('input')) return;
+  setWeight(inp.dataset.a, inp.dataset.b, inp.value === '' ? 50 : inp.value);
+  saveWeights();
+  paintMatrix();
+  markDirty(true);
+});
+
+el.mxTable.addEventListener('change', (e) => {
+  if (e.target.matches('input')) paintMatrix(); // normalize what was typed
+});
+
+el.mxReset.addEventListener('click', () => {
+  weights = Object.create(null);
+  saveWeights();
+  renderMatrix();
+  markDirty(true);
+});
+
+// Applying returns to whichever board view you came from - you asked for a
+// redraw, so you should be looking at it.
+el.mxApply.addEventListener('click', () => {
+  markDirty(false);
+  view = boardView;
+  applyViewChrome(view);
+  load();
+});
+
+function openIO(mode) {
+  const importing = mode === 'import';
+  el.ioTitle.textContent = importing ? 'Import matchup weights' : 'Export matchup weights';
+  el.ioText.value = importing ? '' : JSON.stringify(weightTriples(), null, 2);
+  el.ioText.readOnly = !importing;
+  el.ioSave.hidden = !importing;
+  el.ioHint.textContent = importing
+    ? 'Paste an array of [winner, loser, percent] triples.'
+    : weightTriples().length + ' pairing(s) differ from 50/50.';
+  el.ioModal.classList.remove('hidden');
+  el.ioText.focus();
+  if (!importing) el.ioText.select();
+}
+
+el.mxExport.addEventListener('click', () => openIO('export'));
+el.mxImport.addEventListener('click', () => openIO('import'));
+el.ioCancel.addEventListener('click', () => el.ioModal.classList.add('hidden'));
+
+el.ioSave.addEventListener('click', () => {
+  let list;
+  try {
+    list = JSON.parse(el.ioText.value);
+  } catch (err) {
+    el.ioHint.textContent = 'Could not parse that as JSON.';
+    return;
+  }
+  if (!Array.isArray(list)) { el.ioHint.textContent = 'Expected a JSON array.'; return; }
+  let n = 0;
+  for (const row of list) {
+    if (Array.isArray(row) && row.length >= 3 && setWeight(row[0], row[1], row[2]) !== undefined) n++;
+  }
+  saveWeights();
+  renderMatrix();
+  markDirty(true);
+  el.ioModal.classList.add('hidden');
+  say('Imported ' + n + ' matchup weight(s).', 'hl');
+});
+
 /* ------------------------------ shared UI bits ------------------------------ */
 
 function drawStandings(list) {
@@ -471,6 +682,12 @@ async function applyEvent(ev, token, instant) {
       const bSlot = c.querySelector('.slot[data-side="b"]');
       const pips = [...c.querySelectorAll('.pip')];
 
+      // show the pairing's weight when it isn't an even coin flip
+      if (ev.odds !== undefined && ev.odds !== 50 && !c.querySelector('.odds')) {
+        const strip = c.querySelector('.pips');
+        if (strip) strip.append(tag('span', 'odds', ev.odds + '/' + (100 - ev.odds)));
+      }
+
       if (!instant) {
         c.classList.add('live');
         highlightEdges(ev.id, true);
@@ -508,7 +725,12 @@ async function applyEvent(ev, token, instant) {
       if (ev.sweep && !winSlot.querySelector('.badge.sw')) winSlot.append(tag('span', 'badge sw', 'sweep'));
       if (ev.upset && !winSlot.querySelector('.badge.up')) winSlot.append(tag('span', 'badge up', 'upset'));
 
-      say(ev.winner + ' def. ' + ev.loser + ' ' + ev.score[0] + '-' + ev.score[1] + (ev.upset ? '  (upset)' : ''), ev.upset ? 'up' : null);
+      // an "against the odds" win is a weighted-matchup upset, distinct from a seeding upset
+      const wOdds = ev.odds === undefined ? 50 : (ev.winner === ev.a ? ev.odds : 100 - ev.odds);
+      let note = ev.upset ? '  (upset)' : '';
+      if (wOdds < 50) note += '  (' + wOdds + '% underdog)';
+      say(ev.winner + ' def. ' + ev.loser + ' ' + ev.score[0] + '-' + ev.score[1] + note,
+        (ev.upset || wOdds < 50) ? 'up' : null);
 
       syncStandings(ev.standings);
       flash([ev.a, ev.b], false);
@@ -571,7 +793,7 @@ async function rebuild() {
   const token = run;
   playing = false;
 
-  if (view === 'graph') renderGraph(); else renderCards();
+  if (boardView === 'graph') renderGraph(); else renderCards();
   el.log.textContent = ''; // the silent replay re-emits every line
 
   for (let i = 0; i <= upTo; i++) {
@@ -580,7 +802,7 @@ async function rebuild() {
   }
 
   idx = upTo + 1;
-  if (view === 'graph') fitZoom();
+  if (boardView === 'graph') fitZoom();
   playing = resume;
   playback(token).catch((e) => { if (e !== CANCEL) throw e; });
 }
@@ -629,11 +851,13 @@ async function load(opts) {
   stepOnce = false;
   idx = 0;
 
-  const q = new URLSearchParams();
-  q.set('bestOf', el.bestOf.value);
   const s = el.seed.value.trim();
-  if (opts.keepSeed && s) q.set('seed', s);
-  if (roster) q.set('roster', roster.join('|'));
+  const body = {
+    bestOf: Number(el.bestOf.value),
+    seed: opts.keepSeed && s ? s : undefined,
+    roster: roster || undefined,
+    weights: weightTriples(),
+  };
 
   el.log.textContent = '';
   el.board.textContent = '';
@@ -642,7 +866,11 @@ async function load(opts) {
   el.phase.textContent = 'Drawing bracket\u2026';
   el.podium.classList.add('hidden');
 
-  const res = await fetch('/api/simulate?' + q.toString());
+  const res = await fetch('/api/simulate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
   const json = await res.json();
   if (json.error) { el.phase.textContent = 'Error: ' + json.error; return; }
 
@@ -650,7 +878,7 @@ async function load(opts) {
   el.seed.value = String(data.seed);
   el.bestOf.value = String(data.bestOf);
 
-  if (view === 'graph') { renderGraph(); fitZoom(); } else renderCards();
+  if (boardView === 'graph') { renderGraph(); fitZoom(); } else renderCards();
 
   el.phase.textContent = 'Ready \u2014 press Play';
   el.play.disabled = false;
@@ -666,14 +894,36 @@ function setPlaying(on) {
   el.play.textContent = on ? '\u23f8 Pause' : '\u25b6 Play';
 }
 
-function setView(v) {
-  if (v === view) return;
-  view = v;
+/** Toggle the chrome for a view without touching playback state. */
+function applyViewChrome(v) {
+  const onMatchups = v === 'matchups';
   el.viewCards.classList.toggle('on', v === 'cards');
   el.viewGraph.classList.toggle('on', v === 'graph');
+  el.viewMatch.classList.toggle('on', onMatchups);
   el.zoomCtl.hidden = v !== 'graph';
   el.stage.classList.toggle('graph-mode', v === 'graph');
+  el.matrix.hidden = !onMatchups;
+  el.board.hidden = onMatchups;
+  el.phase.hidden = onMatchups;
+}
+
+function setView(v) {
+  if (v === view) return;
+  const leavingMatchups = view === 'matchups';
+  view = v;
+  applyViewChrome(v);
+
+  if (v === 'matchups') {
+    setPlaying(false); // editing weights while a run animates would be confusing
+    renderMatrix();
+    return;
+  }
+
+  boardView = v;
   if (!data) return;
+  // Weights only take effect on a fresh simulation, so redraw rather than leave
+  // a bracket on screen that was played under the old numbers.
+  if (leavingMatchups && weightsDirty) { markDirty(false); load(); return; }
   rebuild();
 }
 
@@ -688,6 +938,7 @@ el.closePodium.addEventListener('click', () => el.podium.classList.add('hidden')
 
 el.viewCards.addEventListener('click', () => setView('cards'));
 el.viewGraph.addEventListener('click', () => setView('graph'));
+el.viewMatch.addEventListener('click', () => setView('matchups'));
 el.zoomIn.addEventListener('click', () => { zoom = Math.min(1.6, zoom + 0.1); applyZoom(); });
 el.zoomOut.addEventListener('click', () => { zoom = Math.max(0.25, zoom - 0.1); applyZoom(); });
 el.zoomFit.addEventListener('click', fitZoom);
@@ -713,10 +964,16 @@ el.rosterSave.addEventListener('click', () => {
 document.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea, select')) return;
   if (e.key === ' ') { e.preventDefault(); if (!el.play.disabled) setPlaying(!playing); }
-  if (e.key === 'Escape') { el.podium.classList.add('hidden'); el.rosterModal.classList.add('hidden'); }
+  if (e.key === 'Escape') {
+    el.podium.classList.add('hidden');
+    el.rosterModal.classList.add('hidden');
+    el.ioModal.classList.add('hidden');
+  }
   if (e.key === 'ArrowRight' && !el.step.disabled) { setPlaying(false); stepOnce = true; }
-  if (e.key === 'v' || e.key === 'V') setView(view === 'cards' ? 'graph' : 'cards');
+  if (e.key === 'v' || e.key === 'V') setView(boardView === 'cards' ? 'graph' : 'cards');
+  if (e.key === 'm' || e.key === 'M') setView(view === 'matchups' ? boardView : 'matchups');
 });
 
 showSpeed();
+loadWeights();
 load();

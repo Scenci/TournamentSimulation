@@ -57,6 +57,41 @@ function nextPow2(n) {
 }
 
 /**
+ * Matchup weights: per-GAME win probability for a specific pairing.
+ *
+ * Supplied as triples [nameA, nameB, pct] meaning "A wins pct% of games against
+ * B". Both directions are stored so lookups are symmetric and can never
+ * disagree - setting A>B to 54 defines B>A as 46 by construction. Anything
+ * unspecified stays a 50/50 coin flip.
+ *
+ * Weights are deliberately allowed to be non-transitive: A can beat B, B beat
+ * C, and C beat A. Real matchup charts look like that.
+ */
+function buildWeights(list) {
+  const W = Object.create(null);
+  if (!Array.isArray(list)) return W;
+  for (const row of list) {
+    if (!Array.isArray(row) || row.length < 3) continue;
+    const a = row[0];
+    const b = row[1];
+    const p = Number(row[2]);
+    if (typeof a !== 'string' || typeof b !== 'string' || a === b) continue;
+    if (!Number.isFinite(p)) continue;
+    const pct = Math.max(0, Math.min(100, p));
+    (W[a] || (W[a] = Object.create(null)))[b] = pct;
+    (W[b] || (W[b] = Object.create(null)))[a] = 100 - pct;
+  }
+  return W;
+}
+
+/** Probability that `a` takes a single game off `b`. */
+function probOf(W, a, b) {
+  const row = W[a];
+  const v = row && row[b];
+  return v === undefined ? 0.5 : v / 100;
+}
+
+/**
  * Standard bracket seeding order for a given size, e.g. size 8 ->
  * [1,8,4,5,2,7,3,6]. Pairing adjacent entries gives the classic first round
  * where the top seed draws the bottom seed and the favourites are kept apart.
@@ -81,6 +116,7 @@ function simulate(opts) {
 
   const rand = rngFrom(seed);
   const needed = Math.ceil(bestOf / 2); // games required to take a series
+  const matchupW = buildWeights(opts.weights);
 
   // ---- randomized seeding ----
   const field = shuffle(roster.slice(), rand);
@@ -126,15 +162,21 @@ function simulate(opts) {
     return n;
   }
 
-  /** Play one best-of-N series. Every individual game is a straight coin flip. */
+  /**
+   * Play one best-of-N series. Each game is an independent draw at the pairing's
+   * weight (50/50 unless a matchup weight says otherwise), so a series is the
+   * usual binomial amplification: a per-game edge becomes a bigger series edge
+   * the longer the series.
+   */
   function series(node) {
     const a = node.a;
     const b = node.b;
+    const p = probOf(matchupW, a, b);
     let sa = 0;
     let sb = 0;
     const games = [];
     while (sa < needed && sb < needed) {
-      if (rand() < 0.5) { sa++; games.push(a); } else { sb++; games.push(b); }
+      if (rand() < p) { sa++; games.push(a); } else { sb++; games.push(b); }
     }
     const aWon = sa > sb;
     const winner = aWon ? a : b;
@@ -165,6 +207,7 @@ function simulate(opts) {
       winner, loser,
       score: [ws, ls],
       sweep: ls === 0,
+      odds: Math.round(p * 100), // per-game % for `a`; 50 means an even coin flip
       upset: seedOf.get(winner) > seedOf.get(loser),
       eliminated: eliminated ? loser : null,
       standings: snapshot(),
@@ -383,4 +426,4 @@ function simulate(opts) {
   return { seed, bestOf, bracketSize, byeCount, wbRoundCount, lbRoundCount, roster, rounds, nodes, events };
 }
 
-module.exports = { simulate, DEFAULT_ROSTER };
+module.exports = { simulate, DEFAULT_ROSTER, buildWeights, probOf };

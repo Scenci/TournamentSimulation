@@ -15,6 +15,7 @@
   <div class="seg" role="tablist">
     <button id="viewCards" class="seg-btn on">Cards</button>
     <button id="viewGraph" class="seg-btn">Bracket</button>
+    <button id="viewMatch" class="seg-btn">Matchups</button>
   </div>
 
   <div class="ctl">
@@ -64,6 +65,30 @@
   <section class="stage">
     <div id="phase" class="phase">Press Play to run the tournament</div>
     <div id="board" class="board"></div>
+
+    <div id="matrix" class="matrix" hidden>
+      <div class="mx-bar">
+        <div class="mx-intro">
+          <b>Per&#8209;game win rate.</b> A cell is the chance the <em>row</em> beats the
+          <em>column</em> in a single game. Editing one side sets the other automatically.
+          Blank pairings stay 50/50.
+        </div>
+        <div class="mx-actions">
+          <button id="mxReset" class="btn ghost">Reset all to 50%</button>
+          <button id="mxExport" class="btn ghost">Export</button>
+          <button id="mxImport" class="btn ghost">Import</button>
+          <button id="mxApply" class="btn primary">Apply &amp; redraw</button>
+        </div>
+      </div>
+      <div id="mxDirty" class="mx-dirty" hidden>Weights changed &mdash; redraw to apply them.</div>
+      <div class="mx-scroll"><table id="mxTable" class="mx"></table></div>
+      <div class="mx-legend">
+        <span><i class="sw fav"></i> row favoured</span>
+        <span><i class="sw even"></i> even</span>
+        <span><i class="sw dog"></i> row underdog</span>
+        <span class="mx-note">Non&#8209;transitive loops are allowed &mdash; A&gt;B, B&gt;C, C&gt;A is a valid chart.</span>
+      </div>
+    </div>
   </section>
 </main>
 
@@ -88,6 +113,19 @@
       <span class="spacer"></span>
       <button id="rosterCancel" class="btn">Cancel</button>
       <button id="rosterSave" class="btn primary">Save &amp; redraw</button>
+    </div>
+  </div>
+</div>
+
+<div id="ioModal" class="modal hidden">
+  <div class="modal-card">
+    <h3 id="ioTitle">Matchup weights <small>JSON</small></h3>
+    <textarea id="ioText" spellcheck="false" rows="14"></textarea>
+    <div class="modal-actions">
+      <span id="ioHint" class="mx-note"></span>
+      <span class="spacer"></span>
+      <button id="ioCancel" class="btn">Close</button>
+      <button id="ioSave" class="btn primary" hidden>Load these weights</button>
     </div>
   </div>
 </div>

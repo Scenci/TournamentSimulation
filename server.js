@@ -41,6 +41,40 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // POST carries the matchup weight table, which is far too big for a query
+  // string (n entrants means n*(n-1)/2 pairings).
+  if (url.pathname === '/api/simulate' && req.method === 'POST') {
+    let body = '';
+    let tooBig = false;
+    req.on('data', (c) => {
+      body += c;
+      if (body.length > 4e6) { tooBig = true; req.destroy(); }
+    });
+    req.on('end', () => {
+      if (tooBig) { sendJson(res, 413, { error: 'Payload too large.' }); return; }
+      let o;
+      try {
+        o = JSON.parse(body || '{}');
+      } catch (err) {
+        sendJson(res, 400, { error: 'Malformed JSON body.' });
+        return;
+      }
+      const roster = Array.isArray(o.roster)
+        ? o.roster.map((s) => String(s).trim()).filter(Boolean).slice(0, 32)
+        : null;
+      if (roster && roster.length < 4) {
+        sendJson(res, 400, { error: 'Need at least 4 entrants.' });
+        return;
+      }
+      try {
+        sendJson(res, 200, simulate({ seed: o.seed, bestOf: o.bestOf, roster, weights: o.weights }));
+      } catch (err) {
+        sendJson(res, 500, { error: String((err && err.message) || err) });
+      }
+    });
+    return;
+  }
+
   if (url.pathname === '/api/simulate') {
     const q = url.searchParams;
     const rosterRaw = q.get('roster');

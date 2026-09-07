@@ -53,11 +53,58 @@ falling from the winners bracket into the losers bracket. Zoom with − / Fit / 
 Switch at any time with the toggle or the `v` key, including mid-run — the other
 view rebuilds and silently catches up to the exact beat you were on.
 
+## Matchup weights
+
+The third tab (`m`) is a matchup chart: an n×n grid where each cell is the
+chance the **row** beats the **column** *in a single game*. Anything left at 50
+is an even coin flip.
+
+Editing one side sets the other automatically — putting 54 in Crimson Desert vs
+Dungeon Settlers defines the reverse as 46 — so the two halves of the chart can
+never contradict each other. Weights are stored per entrant *name*, so they
+survive roster edits, and they persist in `localStorage`. Export/Import moves
+them as JSON if you want to version a chart or keep several.
+
+**Non-transitive charts are allowed and expected.** A beats B, B beats C, C beats
+A is a perfectly valid matchup triangle, and nothing tries to "correct" it.
+
+### Per-game, not per-series
+
+The weight is applied to each individual game, so a series amplifies it — the
+longer the series, the more the better matchup is favoured. A 60% per-game edge
+becomes:
+
+| Format | Series win rate |
+|---|---|
+| Bo1 | 60.0% |
+| Bo3 | 64.8% |
+| Bo5 | 68.3% |
+| Bo7 | 71.0% |
+
+So a number you tune under Bo3 will mean something different if you switch to
+Bo5. That is the intended behaviour — it is how real series work — but it is
+worth knowing before you wonder why a 54% matchup looks stronger than 54%.
+
+While a weighted match plays, the card shows an odds chip (`46/54`), and a win
+against the odds is called out in the play-by-play as an underdog result,
+separately from a seeding upset.
+
+### Why there are no draws
+
+A bracket edge advances exactly one competitor, and a drawn match would leave
+the next slot, the losers-bracket drop, and the elimination count all undefined —
+nobody would ever be eliminated. Every real knockout format that permits draws in
+league play resolves them at the bracket stage with a tiebreak, so "draws in a
+bracket" is really "a tiebreak rule". Weights change *how often* someone wins,
+never *whether* the match resolves. If you want draws to carry meaning, the place
+for them is a group stage with a points table feeding into the bracket.
+
 ## Controls
 
 | Control | What it does |
 |---|---|
 | **Cards / Bracket** | Switch view (`v`), safe to do mid-run |
+| **Matchups** | Per-pairing win weights (`m`) |
 | **− / Fit / +** | Zoom the bracket view |
 | **Play / Pause** | Start or hold the playback (`space`) |
 | **Step ›** | Advance one beat while paused (`→`) |
@@ -104,8 +151,22 @@ drives either one without knowing which is on screen.
 
 `GET /api/simulate?seed=<uint32>&bestOf=1|3|5|7&roster=A|B|C`
 
-All parameters optional. Returns the bracket skeleton, the event timeline, and
-the seed used. Useful on its own if you want to batch-run tournaments:
+`POST /api/simulate` with a JSON body — the form the app uses, because a weight
+table is too big for a query string (n entrants means n(n−1)/2 pairings):
+
+```json
+{
+  "bestOf": 3,
+  "seed": 12345,
+  "roster": ["Onimusha", "KCD2", "..."],
+  "weights": [["Crimson Desert", "Dungeon Settlers", 54]]
+}
+```
+
+Every field is optional. A weight triple reads "first beats second N% of games";
+the reverse direction is derived, so you only ever state each pairing once.
+Returns the bracket skeleton, the event timeline, and the seed used. Useful on
+its own if you want to batch-run tournaments:
 
 ```bash
 node -e "const{simulate}=require('./sim');const w={};for(let i=0;i<2000;i++){const e=simulate({bestOf:3}).events.at(-1);w[e.champion]=(w[e.champion]||0)+1}console.table(w)"
