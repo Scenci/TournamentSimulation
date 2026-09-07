@@ -303,6 +303,49 @@ table.mx input:focus {
 .sw.dog { background: hsla(353, 70%, 45%, .45); }
 .mx-note { color: var(--faint); font-size: 11px; }
 
+/* ---------- verification panel ---------- */
+.mx-proof {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid #3ddc8444;
+  background: #3ddc840d;
+  border-radius: 10px;
+  max-width: 760px;
+}
+
+.proof-head { font-size: 12.5px; color: var(--dim); margin-bottom: 10px; line-height: 1.5; }
+.proof-head b { color: var(--win); }
+.proof-msg { font-size: 12px; color: var(--dim); }
+.proof-msg + table.proof { margin-top: 8px; }
+
+table.proof {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+
+table.proof th {
+  text-align: right;
+  font-size: 10px;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+  color: var(--faint);
+  font-weight: 600;
+  padding: 0 8px 5px;
+  border-bottom: 1px solid var(--line);
+}
+
+table.proof th:first-child { text-align: left; }
+table.proof td { padding: 5px 8px; border-bottom: 1px solid #ffffff08; }
+table.proof td.pair { color: var(--ink); }
+table.proof td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.proof td.dim { color: var(--faint); }
+table.proof td.none { color: var(--faint); }
+table.proof td.ok { color: var(--win); }
+table.proof td.off { color: var(--live); }
+table.proof tr:last-child td { border-bottom: 0; }
+table.proof + .proof-msg { margin-top: 10px; }
+
 /* per-game odds chip on a match card */
 .odds {
   margin-left: auto;
@@ -477,6 +520,7 @@ main {
 .log p.elim { color: var(--lose); border-left-color: var(--lose); }
 .log p.big { color: var(--gold); border-left-color: var(--gold); background: #ffd1661a; font-weight: 600; }
 .log p.up { color: var(--live); border-left-color: var(--live); }
+.log p.wt { border-left-color: var(--win); }
 
 @keyframes slide {
   from { opacity: 0; transform: translateX(-6px); }
@@ -502,8 +546,6 @@ main {
 }
 
 .phase b { color: var(--gold); letter-spacing: 1.4px; }
-
-.board.cards { display: flex; flex-direction: column; gap: 22px; }
 
 /* ---------- bracket graph view ---------- */
 .stage.graph-mode { padding: 0; position: relative; }
@@ -607,63 +649,7 @@ main {
 
 .badge.by { background: var(--panel-2); color: var(--dim); }
 
-.lane { min-width: min-content; }
-
-
-.lane-hd {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 10.5px;
-  letter-spacing: 1.4px;
-  text-transform: uppercase;
-  color: var(--faint);
-  margin-bottom: 10px;
-  position: sticky;
-  left: 0;
-}
-
-.lane-hd::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--line);
-}
-
-.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
-.lane-w .dot { background: var(--wb); }
-.lane-l .dot { background: var(--lb); }
-.lane-gf .dot { background: var(--gold); }
-
-.cols { display: flex; gap: 14px; align-items: flex-start; }
-
-.col {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex: none;
-  width: 244px;
-  opacity: .45;
-  transition: opacity .35s;
-}
-
-.col.active, .col.done { opacity: 1; }
-
-.col-hd {
-  font-size: 10px;
-  letter-spacing: .9px;
-  text-transform: uppercase;
-  color: var(--faint);
-  padding-left: 2px;
-  height: 14px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.col.active .col-hd { color: var(--gold); }
-
-/* ---------- match cards ---------- */
+/* ---------- match boxes ---------- */
 .match {
   background: var(--panel);
   border: 1px solid var(--line);

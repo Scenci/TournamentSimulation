@@ -13,8 +13,7 @@
   <div class="brand"><span class="cup">&#127942;</span> Tournament Sim</div>
 
   <div class="seg" role="tablist">
-    <button id="viewCards" class="seg-btn on">Cards</button>
-    <button id="viewGraph" class="seg-btn">Bracket</button>
+    <button id="viewGraph" class="seg-btn on">Bracket</button>
     <button id="viewMatch" class="seg-btn">Matchups</button>
   </div>
 
@@ -77,10 +76,12 @@
           <button id="mxReset" class="btn ghost">Reset all to 50%</button>
           <button id="mxExport" class="btn ghost">Export</button>
           <button id="mxImport" class="btn ghost">Import</button>
+          <button id="mxVerify" class="btn">Verify</button>
           <button id="mxApply" class="btn primary">Apply &amp; redraw</button>
         </div>
       </div>
       <div id="mxDirty" class="mx-dirty" hidden>Weights changed &mdash; redraw to apply them.</div>
+      <div id="mxProof" class="mx-proof" hidden></div>
       <div class="mx-scroll"><table id="mxTable" class="mx"></table></div>
       <div class="mx-legend">
         <span><i class="sw fav"></i> row favoured</span>

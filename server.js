@@ -94,6 +94,86 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  /**
+   * Proof that the weights are actually driving the coin flips: run the same
+   * configuration many times headlessly and report, for each weighted pairing,
+   * the rate actually observed across every game played versus the rate you set.
+   */
+  if (url.pathname === '/api/verify' && req.method === 'POST') {
+    let body = '';
+    let tooBig = false;
+    req.on('data', (c) => {
+      body += c;
+      if (body.length > 4e6) { tooBig = true; req.destroy(); }
+    });
+    req.on('end', () => {
+      if (tooBig) { sendJson(res, 413, { error: 'Payload too large.' }); return; }
+      let o;
+      try {
+        o = JSON.parse(body || '{}');
+      } catch (err) {
+        sendJson(res, 400, { error: 'Malformed JSON body.' });
+        return;
+      }
+
+      const weights = Array.isArray(o.weights) ? o.weights : [];
+      if (!weights.length) { sendJson(res, 200, { runs: 0, pairs: [] }); return; }
+
+      const roster = Array.isArray(o.roster) && o.roster.length >= 4
+        ? o.roster.map((s) => String(s).trim()).filter(Boolean).slice(0, 32)
+        : null;
+      const runs = Math.max(100, Math.min(20000, Number(o.runs) || 2000));
+
+      // canonical key per pairing, ordered so the tally is unambiguous
+      const want = new Map();
+      for (const row of weights) {
+        if (!Array.isArray(row) || row.length < 3) continue;
+        const [a, b, pct] = row;
+        if (typeof a !== 'string' || typeof b !== 'string' || a === b) continue;
+        const lo = a < b ? a : b;
+        const hi = a < b ? b : a;
+        const setPct = a < b ? Number(pct) : 100 - Number(pct);
+        want.set(lo + '\u0000' + hi, { lo, hi, setPct, games: 0, loWins: 0, series: 0 });
+      }
+
+      const started = Date.now();
+      try {
+        for (let i = 0; i < runs; i++) {
+          const sim = simulate({ bestOf: o.bestOf, roster, weights });
+          for (const ev of sim.events) {
+            if (ev.type !== 'match') continue;
+            const lo = ev.a < ev.b ? ev.a : ev.b;
+            const hi = ev.a < ev.b ? ev.b : ev.a;
+            const rec = want.get(lo + '\u0000' + hi);
+            if (!rec) continue;
+            rec.series++;
+            for (const g of ev.games) {
+              rec.games++;
+              if (g === lo) rec.loWins++;
+            }
+          }
+        }
+      } catch (err) {
+        sendJson(res, 500, { error: String((err && err.message) || err) });
+        return;
+      }
+
+      const pairs = [...want.values()]
+        .map((r) => ({
+          a: r.lo,
+          b: r.hi,
+          setPct: r.setPct,
+          observedPct: r.games ? (r.loWins / r.games) * 100 : null,
+          games: r.games,
+          series: r.series,
+        }))
+        .sort((x, y) => y.games - x.games);
+
+      sendJson(res, 200, { runs, ms: Date.now() - started, pairs });
+    });
+    return;
+  }
+
   if (url.pathname === '/api/roster') {
     sendJson(res, 200, { roster: DEFAULT_ROSTER });
     return;

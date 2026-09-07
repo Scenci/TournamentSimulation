@@ -6,13 +6,10 @@
  * The server simulates the whole tournament up front and hands back a flat
  * event timeline. Everything here is presentation.
  *
- * Two renderers draw the same tournament:
- *   - "cards"   round-by-round columns, compact and easy to scan
- *   - "bracket" the classic tree, with SVG connectors between matches
- *
- * Both emit the same DOM contract - a .match[data-id][data-round-key] holding
- * .slot[data-side] rows and a .pips strip - so a single playback engine drives
- * either one. Switching views mid-run replays silently up to the current beat.
+ * The board is a bracket tree with SVG connectors between matches. Match boxes
+ * follow a .match[data-id][data-round-key] contract holding .slot[data-side]
+ * rows and a .pips strip, which is what the playback engine drives. Switching
+ * to the Matchups tab and back replays silently up to the current beat.
  * ------------------------------------------------------------------ */
 
 const $ = (s) => document.querySelector(s);
@@ -26,10 +23,11 @@ const el = {
   finalTable: $('#finalTable'), totals: $('#totals'), closePodium: $('#closePodium'),
   rosterBtn: $('#roster'), rosterModal: $('#rosterModal'), rosterText: $('#rosterText'),
   rosterSave: $('#rosterSave'), rosterCancel: $('#rosterCancel'), rosterReset: $('#rosterReset'),
-  viewCards: $('#viewCards'), viewGraph: $('#viewGraph'), viewMatch: $('#viewMatch'),
+  viewGraph: $('#viewGraph'), viewMatch: $('#viewMatch'),
   zoomCtl: $('#zoomCtl'), zoomIn: $('#zoomIn'), zoomOut: $('#zoomOut'), zoomFit: $('#zoomFit'),
   matrix: $('#matrix'), mxTable: $('#mxTable'), mxDirty: $('#mxDirty'),
   mxReset: $('#mxReset'), mxExport: $('#mxExport'), mxImport: $('#mxImport'), mxApply: $('#mxApply'),
+  mxVerify: $('#mxVerify'), mxProof: $('#mxProof'),
   ioModal: $('#ioModal'), ioTitle: $('#ioTitle'), ioText: $('#ioText'), ioHint: $('#ioHint'),
   ioCancel: $('#ioCancel'), ioSave: $('#ioSave'),
 };
@@ -47,8 +45,7 @@ G.COL_W = G.BOX_W + G.GAP_X;
 
 let data = null;        // current simulation
 let roster = null;      // null = server default
-let view = 'cards';
-let boardView = 'cards'; // last board view, restored when leaving Matchups
+let view = 'bracket';
 let weights = Object.create(null); // W[a][b] = % chance a takes a game off b
 let weightsDirty = false;
 let zoom = 1;
@@ -130,41 +127,6 @@ function matchBox(node) {
     box.append(pips);
   }
   return box;
-}
-
-/* ------------------------------ renderer: cards ------------------------------ */
-
-function renderCards() {
-  el.board.className = 'board cards';
-  el.board.style.cssText = '';
-  el.board.textContent = '';
-
-  const lanes = [
-    { k: 'W', title: 'Winners Bracket' },
-    { k: 'L', title: 'Losers Bracket \u2014 one more loss and you are out' },
-    { k: 'GF', title: 'Grand Final' },
-  ];
-
-  for (const lane of lanes) {
-    const rounds = data.rounds.filter((r) => r.bracket === lane.k);
-    if (!rounds.length) continue;
-
-    const wrap = tag('div', 'lane lane-' + lane.k.toLowerCase());
-    const hd = tag('div', 'lane-hd');
-    hd.append(tag('span', 'dot'), tag('span', null, lane.title));
-    wrap.append(hd);
-
-    const cols = tag('div', 'cols');
-    for (const r of rounds) {
-      const col = tag('div', 'col');
-      col.dataset.key = r.key;
-      col.append(tag('div', 'col-hd', r.name));
-      for (const n of r.matches) col.append(matchBox(n));
-      cols.append(col);
-    }
-    wrap.append(cols);
-    el.board.append(wrap);
-  }
 }
 
 /* ------------------------------ renderer: bracket graph ------------------------------ */
@@ -509,10 +471,89 @@ el.mxReset.addEventListener('click', () => {
 // redraw, so you should be looking at it.
 el.mxApply.addEventListener('click', () => {
   markDirty(false);
-  view = boardView;
+  view = 'bracket';
   applyViewChrome(view);
   load();
 });
+
+/**
+ * Proof the weights are live: re-run this exact configuration many times and
+ * compare the rate actually observed across every game played to the rate set
+ * in the chart. Lives here rather than on the bracket so the normal view stays
+ * uncluttered.
+ */
+el.mxVerify.addEventListener('click', async () => {
+  const triples = weightTriples();
+  el.mxProof.hidden = false;
+  el.mxProof.textContent = '';
+
+  if (!triples.length) {
+    el.mxProof.append(tag('div', 'proof-msg', 'Nothing to verify — every pairing is still an even 50/50.'));
+    return;
+  }
+
+  el.mxVerify.disabled = true;
+  el.mxProof.append(tag('div', 'proof-msg', 'Running 2,000 tournaments…'));
+
+  try {
+    const res = await fetch('/api/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bestOf: Number(el.bestOf.value), roster: roster || undefined, weights: triples, runs: 2000 }),
+    });
+    const out = await res.json();
+    if (out.error) throw new Error(out.error);
+    renderProof(out);
+  } catch (err) {
+    el.mxProof.textContent = '';
+    el.mxProof.append(tag('div', 'proof-msg', 'Verify failed: ' + err.message));
+  } finally {
+    el.mxVerify.disabled = false;
+  }
+});
+
+function renderProof(out) {
+  el.mxProof.textContent = '';
+
+  const head = tag('div', 'proof-head');
+  head.append(tag('b', null, 'Weights verified live.'));
+  head.append(tag('span', null,
+    ' ' + out.runs.toLocaleString() + ' tournaments simulated in ' + out.ms + 'ms. '
+    + 'Observed is the share of actual games won, across every time the pairing met.'));
+  el.mxProof.append(head);
+
+  const t = tag('table', 'proof');
+  const th = tag('tr');
+  ['Pairing', 'Set', 'Observed', 'Δ', 'Games', 'Meetings'].forEach((h) => th.append(tag('th', null, h)));
+  t.append(th);
+
+  let worst = 0;
+  for (const p of out.pairs) {
+    const tr = tag('tr');
+    tr.append(tag('td', 'pair', p.a + ' vs ' + p.b));
+    tr.append(tag('td', 'num', p.setPct + '%'));
+
+    if (p.observedPct === null) {
+      tr.append(tag('td', 'num none', '—'), tag('td', 'num none', '—'));
+    } else {
+      const d = p.observedPct - p.setPct;
+      worst = Math.max(worst, Math.abs(d));
+      tr.append(tag('td', 'num', p.observedPct.toFixed(1) + '%'));
+      const dc = tag('td', 'num ' + (Math.abs(d) <= 2 ? 'ok' : 'off'), (d >= 0 ? '+' : '') + d.toFixed(1));
+      tr.append(dc);
+    }
+    tr.append(tag('td', 'num dim', p.games.toLocaleString()));
+    tr.append(tag('td', 'num dim', p.series.toLocaleString()));
+    t.append(tr);
+  }
+  el.mxProof.append(t);
+
+  const met = out.pairs.filter((p) => p.games > 0).length;
+  el.mxProof.append(tag('div', 'proof-msg',
+    met === out.pairs.length
+      ? 'Every weighted pairing met at least once. Largest gap from the set value: ' + worst.toFixed(1) + ' points.'
+      : (out.pairs.length - met) + ' pairing(s) never met — the bracket kept them apart. Largest gap elsewhere: ' + worst.toFixed(1) + ' points.'));
+}
 
 function openIO(mode) {
   const importing = mode === 'import';
@@ -633,6 +674,10 @@ async function applyEvent(ev, token, instant) {
       drawStandings(ev.field.map((f) => ({ name: f.name, seed: f.seed, sw: 0, sl: 0, out: false })));
       say('Draw: ' + ev.field.length + ' entrants, ' + ev.bracketSize + '-slot bracket, best of ' + ev.bestOf + '.', 'big');
       if (ev.byeCount) say(ev.byeCount + ' bye' + (ev.byeCount > 1 ? 's' : '') + ' to fill a ' + ev.bracketSize + '-slot draw.', 'hl');
+      const nw = weightTriples().length;
+      say(nw
+        ? 'Matchup weights ACTIVE on ' + nw + ' pairing' + (nw > 1 ? 's' : '') + ' — weighted games are flagged below.'
+        : 'No matchup weights — every game is an even coin flip.', nw ? 'big' : null);
       await wait(T.round, token, instant);
       break;
     }
@@ -643,13 +688,10 @@ async function applyEvent(ev, token, instant) {
         fill(b, 'a', b.dataset.a, seedMap.get(b.dataset.a), !instant);
         fill(b, 'b', b.dataset.b, seedMap.get(b.dataset.b), !instant);
       }
-      for (const c of el.board.querySelectorAll('.col.active')) c.classList.replace('active', 'done');
       for (const g of el.board.querySelectorAll('.glabel.active')) g.classList.remove('active');
-      const col = el.board.querySelector('.col[data-key="' + ev.key + '"]');
-      if (col) { col.classList.add('active'); scrollTo(col, instant); }
       const lab = el.board.querySelector('.glabel[data-key="' + ev.key + '"]');
       if (lab) lab.classList.add('active');
-      if (!col && boxes[0]) scrollTo(boxes[0], instant);
+      if (boxes[0]) scrollTo(boxes[0], instant);
 
       el.phase.textContent = '';
       el.phase.append(tag('b', null, ev.name));
@@ -725,12 +767,13 @@ async function applyEvent(ev, token, instant) {
       if (ev.sweep && !winSlot.querySelector('.badge.sw')) winSlot.append(tag('span', 'badge sw', 'sweep'));
       if (ev.upset && !winSlot.querySelector('.badge.up')) winSlot.append(tag('span', 'badge up', 'upset'));
 
-      // an "against the odds" win is a weighted-matchup upset, distinct from a seeding upset
+      // Every weighted match is annotated with the winner's per-game odds, so the
+      // weighting is visible in the run itself rather than only in the chart.
       const wOdds = ev.odds === undefined ? 50 : (ev.winner === ev.a ? ev.odds : 100 - ev.odds);
       let note = ev.upset ? '  (upset)' : '';
-      if (wOdds < 50) note += '  (' + wOdds + '% underdog)';
+      if (wOdds !== 50) note += '  · ' + wOdds + '% ' + (wOdds < 50 ? 'underdog' : 'favourite');
       say(ev.winner + ' def. ' + ev.loser + ' ' + ev.score[0] + '-' + ev.score[1] + note,
-        (ev.upset || wOdds < 50) ? 'up' : null);
+        (ev.upset || wOdds < 50) ? 'up' : (wOdds !== 50 ? 'wt' : null));
 
       syncStandings(ev.standings);
       flash([ev.a, ev.b], false);
@@ -793,7 +836,7 @@ async function rebuild() {
   const token = run;
   playing = false;
 
-  if (boardView === 'graph') renderGraph(); else renderCards();
+  renderGraph();
   el.log.textContent = ''; // the silent replay re-emits every line
 
   for (let i = 0; i <= upTo; i++) {
@@ -802,7 +845,7 @@ async function rebuild() {
   }
 
   idx = upTo + 1;
-  if (boardView === 'graph') fitZoom();
+  fitZoom();
   playing = resume;
   playback(token).catch((e) => { if (e !== CANCEL) throw e; });
 }
@@ -837,7 +880,9 @@ function finish(ev, instant) {
     row.append(tag('span', 'pl', p.place + '.'), tag('span', 'nm', p.name), tag('span', 'rc', p.sw + '-' + p.sl + '  \u00b7  #' + p.seed));
     el.finalTable.append(row);
   }
-  el.totals.textContent = ev.totals.series + ' series \u00b7 ' + ev.totals.games + ' games \u00b7 seed ' + data.seed;
+  const weighted = data.events.filter((e) => e.type === 'match' && e.odds !== undefined && e.odds !== 50).length;
+  el.totals.textContent = ev.totals.series + ' series \u00b7 ' + ev.totals.games + ' games \u00b7 seed ' + data.seed
+    + (weighted ? ' \u00b7 ' + weighted + ' weighted matchup' + (weighted > 1 ? 's' : '') + ' applied' : '');
   if (!instant) el.podium.classList.remove('hidden');
 }
 
@@ -878,7 +923,8 @@ async function load(opts) {
   el.seed.value = String(data.seed);
   el.bestOf.value = String(data.bestOf);
 
-  if (boardView === 'graph') { renderGraph(); fitZoom(); } else renderCards();
+  renderGraph();
+  fitZoom();
 
   el.phase.textContent = 'Ready \u2014 press Play';
   el.play.disabled = false;
@@ -897,11 +943,10 @@ function setPlaying(on) {
 /** Toggle the chrome for a view without touching playback state. */
 function applyViewChrome(v) {
   const onMatchups = v === 'matchups';
-  el.viewCards.classList.toggle('on', v === 'cards');
-  el.viewGraph.classList.toggle('on', v === 'graph');
+  el.viewGraph.classList.toggle('on', !onMatchups);
   el.viewMatch.classList.toggle('on', onMatchups);
-  el.zoomCtl.hidden = v !== 'graph';
-  el.stage.classList.toggle('graph-mode', v === 'graph');
+  el.zoomCtl.hidden = onMatchups;
+  el.stage.classList.toggle('graph-mode', !onMatchups);
   el.matrix.hidden = !onMatchups;
   el.board.hidden = onMatchups;
   el.phase.hidden = onMatchups;
@@ -919,7 +964,6 @@ function setView(v) {
     return;
   }
 
-  boardView = v;
   if (!data) return;
   // Weights only take effect on a fresh simulation, so redraw rather than leave
   // a bracket on screen that was played under the old numbers.
@@ -936,8 +980,7 @@ el.seed.addEventListener('change', () => load({ keepSeed: true }));
 el.speed.addEventListener('input', showSpeed);
 el.closePodium.addEventListener('click', () => el.podium.classList.add('hidden'));
 
-el.viewCards.addEventListener('click', () => setView('cards'));
-el.viewGraph.addEventListener('click', () => setView('graph'));
+el.viewGraph.addEventListener('click', () => setView('bracket'));
 el.viewMatch.addEventListener('click', () => setView('matchups'));
 el.zoomIn.addEventListener('click', () => { zoom = Math.min(1.6, zoom + 0.1); applyZoom(); });
 el.zoomOut.addEventListener('click', () => { zoom = Math.max(0.25, zoom - 0.1); applyZoom(); });
@@ -970,10 +1013,10 @@ document.addEventListener('keydown', (e) => {
     el.ioModal.classList.add('hidden');
   }
   if (e.key === 'ArrowRight' && !el.step.disabled) { setPlaying(false); stepOnce = true; }
-  if (e.key === 'v' || e.key === 'V') setView(boardView === 'cards' ? 'graph' : 'cards');
-  if (e.key === 'm' || e.key === 'M') setView(view === 'matchups' ? boardView : 'matchups');
+  if (e.key === 'm' || e.key === 'M') setView(view === 'matchups' ? 'bracket' : 'matchups');
 });
 
 showSpeed();
+applyViewChrome(view); // the board is absolutely positioned and needs its container set up
 loadWeights();
 load();

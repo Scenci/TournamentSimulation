@@ -20,7 +20,8 @@ timeline. The browser just replays that timeline. Two consequences worth knowing
 - Every tournament has a **seed**. Paste a seed back into the seed box to replay
   that exact tournament, match for match.
 
-Matches are pure coin flips. Nothing is weighted by how good a game actually is.
+By default matches are pure coin flips. The Matchups tab lets you weight any
+pairing against any other.
 
 ## The bracket
 
@@ -41,17 +42,14 @@ round, and that is a genuine advantage. Over 3000 runs the bye seeds win ~12%
 each against ~6.4% for the rest. Per *entrant* it still evens out to ~8.3%,
 because the seeding itself is redrawn at random every tournament.
 
-## Two views
+## The board
 
-**Cards** — round-by-round columns. Compact, everything visible, good for
-following the play-by-play.
+The classic bracket tree, with SVG connectors running from each match to the one
+it feeds. Solid lines advance a winner; dashed purple lines are drops falling
+from the winners bracket into the losers bracket. Zoom with − / Fit / +.
 
-**Bracket** — the classic tree, with SVG connectors running from each match to
-the one it feeds. Solid lines advance a winner; dashed purple lines are drops
-falling from the winners bracket into the losers bracket. Zoom with − / Fit / +.
-
-Switch at any time with the toggle or the `v` key, including mid-run — the other
-view rebuilds and silently catches up to the exact beat you were on.
+You can duck into the Matchups tab mid-run and come back — the board rebuilds
+and silently catches up to the exact beat you were on.
 
 ## Matchup weights
 
@@ -85,9 +83,23 @@ So a number you tune under Bo3 will mean something different if you switch to
 Bo5. That is the intended behaviour — it is how real series work — but it is
 worth knowing before you wonder why a 54% matchup looks stronger than 54%.
 
-While a weighted match plays, the card shows an odds chip (`46/54`), and a win
-against the odds is called out in the play-by-play as an underdog result,
-separately from a seeding upset.
+### Proving the weights are live
+
+**Verify** re-runs the current configuration 2,000 times headlessly and reports,
+for every weighted pairing, the rate actually observed across all games played
+against the rate you set — plus how many games and meetings that came from. A
+gap under ~2 points is sampling noise; a systematically wrong number would show
+up immediately. It takes about 50ms.
+
+Within a single run the weighting is visible without any extra chrome:
+
+- the play-by-play opens with `Matchup weights ACTIVE on N pairings`
+- a weighted match's card shows an odds chip (`75/25`)
+- each weighted result is annotated `· 75% favourite` / `· 25% underdog`
+- the podium totals end with `N weighted matchups applied`
+
+Note that a matchup favourite can still be a seeding *upset* — those are separate
+things and are labelled separately.
 
 ### Why there are no draws
 
@@ -103,8 +115,7 @@ for them is a group stage with a points table feeding into the bracket.
 
 | Control | What it does |
 |---|---|
-| **Cards / Bracket** | Switch view (`v`), safe to do mid-run |
-| **Matchups** | Per-pairing win weights (`m`) |
+| **Bracket / Matchups** | Switch tab (`m`), safe to do mid-run |
 | **− / Fit / +** | Zoom the bracket view |
 | **Play / Pause** | Start or hold the playback (`space`) |
 | **Step ›** | Advance one beat while paused (`→`) |
@@ -141,11 +152,11 @@ resets and a deciding series is played.
 | `server.js` | Static file server + `/api/simulate` |
 | `public/index.html` | Markup |
 | `public/style.css` | Styles |
-| `public/app.js` | Both renderers + the shared playback engine |
+| `public/app.js` | Bracket renderer, matchup editor, playback engine |
 
-Both renderers emit the same DOM contract — a `.match[data-id][data-round-key]`
-holding `.slot[data-side]` rows and a `.pips` strip — so one playback engine
-drives either one without knowing which is on screen.
+Match boxes follow a `.match[data-id][data-round-key]` contract holding
+`.slot[data-side]` rows and a `.pips` strip, which is what the playback engine
+drives — it never needs to know how the board was laid out.
 
 ### API
 
@@ -171,3 +182,8 @@ its own if you want to batch-run tournaments:
 ```bash
 node -e "const{simulate}=require('./sim');const w={};for(let i=0;i<2000;i++){const e=simulate({bestOf:3}).events.at(-1);w[e.champion]=(w[e.champion]||0)+1}console.table(w)"
 ```
+
+`POST /api/verify` with `{ bestOf, roster, weights, runs }` runs the same
+configuration `runs` times (100–20,000, default 2,000) and returns per-pairing
+`setPct` / `observedPct` / `games` / `series`. This is what the Verify button
+calls; it is also useful on its own for checking a chart before committing it.
